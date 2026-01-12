@@ -3,8 +3,8 @@ from supabase import create_client, Client
 
 # 1. Konfiguracja połączenia z Supabase
 # W produkcji użyj st.secrets["SUPABASE_URL"]
-SUPABASE_URL = "TWOJ_URL_SUPABASE"
-SUPABASE_KEY = "TWOJ_KLUCZ_API_SUPABASE"
+SUPABASE_URL = "https://rvmohidljplctnckdwvo.supabase.co"
+SUPABASE_KEY = "sb_publishable_Ctl7It5WKwmVMBtbyshyIA_2WDFALsV"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
