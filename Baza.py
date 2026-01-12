@@ -1,108 +1,90 @@
 import streamlit as st
 from supabase import create_client, Client
 
-# --- KONFIGURACJA POŁĄCZENIA ---
-# Wklej tutaj swoje dane z panelu Supabase
-URL = "TWOJ_ADRES_URL_Z_SUPABASE"
-KEY = "TWOJ_KLUCZ_ANON_PUBLIC"
+# 1. Konfiguracja połączenia z Supabase
+# W produkcji użyj st.secrets["SUPABASE_URL"]
+SUPABASE_URL = "TWOJ_URL_SUPABASE"
+SUPABASE_KEY = "TWOJ_KLUCZ_API_SUPABASE"
 
-@st.cache_resource
-def init_connection():
-    """Inicjalizuje połączenie z bazą danych raz, aby nie powtarzać tego przy każdym odświeżeniu."""
-    return create_client(URL, KEY)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Inicjalizacja klienta
-try:
-    supabase = init_connection()
-except Exception as e:
-    st.error(f"Błąd połączenia z Supabase: {e}")
-    st.stop()
-
-st.set_page_config(page_title="Zarządzanie Magazynem", layout="centered")
+st.set_page_config(page_title="Zarządzanie Sklepem", layout="centered")
 st.title("📦 System Zarządzania Produktami")
 
-# --- ZAKŁADKI ---
-tab1, tab2, tab3 = st.tabs([" Dodaj Produkt", "➕ Dodaj Kategorię", "📊 Podgląd Bazy"])
+# --- MENU BOCZNE ---
+menu = ["Dodaj Produkt", "Dodaj Kategorię", "Podgląd Bazy"]
+choice = st.sidebar.selectbox("Nawigacja", menu)
 
-# --- DODAWANIE KATEGORII ---
-with tab2:
-    st.header("Nowa Kategoria")
-    with st.form("category_form", clear_on_submit=True):
-        kat_nazwa = st.text_input("Nazwa kategorii")
-        kat_opis = st.text_area("Opis")
-        submit_kat = st.form_submit_button("Zapisz kategorię")
+# --- FUNKCJE POMOCNICZE ---
+def get_categories():
+    response = supabase.table("kategorie").select("id, nazwa").execute()
+    return response.data
 
-        if submit_kat:
-            if kat_nazwa:
+# --- LOGIKA APLIKACJI ---
+
+if choice == "Dodaj Kategorię":
+    st.header("➕ Nowa Kategoria")
+    with st.form("form_kategoria"):
+        nazwa = st.text_input("Nazwa kategorii")
+        opis = st.text_area("Opis")
+        submit = st.form_submit_button("Zapisz kategorię")
+
+        if submit:
+            if nazwa:
+                data = {"nazwa": nazwa, "opis": opis}
                 try:
-                    data = {"nazwa": kat_nazwa, "opis": kat_opis}
-                    supabase.table("Kategorie").insert(data).execute()
-                    st.success(f"Dodano kategorię: {kat_nazwa}")
+                    supabase.table("kategorie").insert(data).execute()
+                    st.success(f"Dodano kategorię: {nazwa}")
                 except Exception as e:
-                    st.error(f"Błąd zapisu: {e}")
+                    st.error(f"Błąd: {e}")
             else:
-                st.error("Nazwa kategorii jest wymagana!")
+                st.warning("Nazwa jest wymagana!")
 
-# --- DODAWANIE PRODUKTU ---
-with tab1:
-    st.header("Nowy Produkt")
-   
-    # Pobranie aktualnych kategorii do listy rozwijanej
-    try:
-        categories_res = supabase.table("Kategorie").select("id, nazwa").execute()
-        categories_data = categories_res.data
-    except Exception as e:
-        st.error("Nie udało się pobrać kategorii.")
-        categories_data = []
-   
-    if not categories_data:
-        st.warning("Najpierw dodaj przynajmniej jedną kategorię w zakładce obok!")
+elif choice == "Dodaj Produkt":
+    st.header("🛍️ Nowy Produkt")
+    
+    # Pobieramy aktualne kategorie do selectboxa
+    kategorie = get_categories()
+    if not kategorie:
+        st.error("Najpierw dodaj przynajmniej jedną kategorię!")
     else:
-        # Mapowanie nazwy na ID
-        cat_options = {item['nazwa']: item['id'] for item in categories_data}
-       
-        with st.form("product_form", clear_on_submit=True):
-            prod_nazwa = st.text_input("Nazwa produktu")
-            prod_liczba = st.number_input("Liczba (sztuki)", min_value=0, step=1)
-            prod_cena = st.number_input("Cena", min_value=0.0, step=0.01, format="%.2f")
-            prod_kat_nazwa = st.selectbox("Kategoria", options=list(cat_options.keys()))
-           
+        kat_options = {k['nazwa']: k['id'] for k in kategorie}
+        
+        with st.form("form_produkt"):
+            nazwa_prod = st.text_input("Nazwa produktu")
+            liczba = st.number_input("Ilość (Liczba)", min_value=0, step=1)
+            cena = st.number_input("Cena", min_value=0.0, format="%.2f")
+            wybrana_kat_nazwa = st.selectbox("Kategoria", list(kat_options.keys()))
+            
             submit_prod = st.form_submit_button("Dodaj produkt")
-           
+            
             if submit_prod:
-                if prod_nazwa:
+                if nazwa_prod:
+                    payload = {
+                        "Nazwa": nazwa_prod,
+                        "Liczba": liczba,
+                        "Cena": cena,
+                        "kategorie_id": kat_options[wybrana_kat_nazwa]
+                    }
                     try:
-                        product_data = {
-                            "nazwa": prod_nazwa,
-                            "liczba": prod_liczba,
-                            "cena": prod_cena,
-                            "kategorie_id": cat_options[prod_kat_nazwa]
-                        }
-                        supabase.table("Produkty").insert(product_data).execute()
-                        st.success(f"Produkt '{prod_nazwa}' został dodany.")
+                        supabase.table("Produkty").insert(payload).execute()
+                        st.success(f"Dodano produkt: {nazwa_prod}")
                     except Exception as e:
-                        st.error(f"Błąd podczas dodawania produktu: {e}")
+                        st.error(f"Błąd zapisu: {e}")
                 else:
-                    st.error("Nazwa produktu jest wymagana!")
+                    st.warning("Nazwa produktu jest wymagana!")
 
-# --- PODGLĄD DANYCH ---
-with tab3:
-    st.header("Aktualny stan bazy")
-   
-    col1, col2 = st.columns(2)
-   
+elif choice == "Podgląd Bazy":
+    st.header("📊 Aktualny stan bazy")
+    
+    col1, col2 = st.tabs(["Produkty", "Kategorie"])
+    
     with col1:
-        st.subheader("Kategorie")
-        kat_view = supabase.table("Kategorie").select("id, nazwa, opis").execute()
-        if kat_view.data:
-            st.dataframe(kat_view.data, use_container_width=True)
-        else:
-            st.info("Brak kategorii.")
-   
+        prod_data = supabase.table("Produkty").select("*, kategorie(nazwa)").execute()
+        if prod_data.data:
+            st.table(prod_data.data)
+            
     with col2:
-        st.subheader("Produkty")
-        prod_view = supabase.table("Produkty").select("id, nazwa, liczba, cena, kategorie_id").execute()
-        if prod_view.data:
-            st.dataframe(prod_view.data, use_container_width=True)
-        else:
-            st.info("Brak produktów.")
+        kat_data = supabase.table("kategorie").select("*").execute()
+        if kat_data.data:
+            st.table(kat_data.data)
